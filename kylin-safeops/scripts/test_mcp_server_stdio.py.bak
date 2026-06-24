@@ -1,0 +1,40 @@
+import asyncio
+import sys
+
+try:
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+except ImportError as exc:
+    raise SystemExit("Python MCP SDK is not installed. Run: pip install -r backend/requirements.txt") from exc
+
+
+async def main() -> None:
+    command = sys.executable
+    params = StdioServerParameters(
+        command=command,
+        args=["-m", "backend.app.mcp_server", "--transport", "stdio"],
+    )
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            tools = await session.list_tools()
+            resources = await session.list_resources()
+            prompts = await session.list_prompts()
+            print("TOOLS", [tool.name for tool in tools.tools])
+            print("RESOURCES", [str(resource.uri) for resource in resources.resources])
+            print("PROMPTS", [prompt.name for prompt in prompts.prompts])
+
+            os_release = await session.read_resource("os://release")
+            print("READ os://release", os_release.contents[0].text[:240].replace("\n", "\\n"))
+
+            blocked = await session.call_tool("restart_service", {"service": "nginx"})
+            print("RESTART_IS_ERROR", blocked.isError)
+            print("RESTART_BLOCKED", blocked.content[0].text[:360].replace("\n", "\\n"))
+
+            ss_result = await session.call_tool("ss_listen", {"port": 80})
+            print("SS_LISTEN_IS_ERROR", ss_result.isError)
+            print("SS_LISTEN", ss_result.content[0].text[:360].replace("\n", "\\n"))
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

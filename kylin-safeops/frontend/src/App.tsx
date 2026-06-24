@@ -659,6 +659,11 @@ export function App() {
   const confidenceScore = toPercent(dashboardResult.root_cause?.confidence);
   const riskLevel = dashboardShadow?.risk ?? "medium";
   const effectiveMode = summary?.environment?.effective_mode ?? "demo";
+  const metricFacts = summary?.system_metrics ?? {};
+  const cpuFacts = metricFacts.cpu?.facts ?? {};
+  const memoryFacts = metricFacts.memory?.facts ?? {};
+  const diskFacts = metricFacts.disk?.facts ?? {};
+  const metricsIsDemo = summary?.metrics_source !== "real" || metricFacts.is_demo;
   const activeRuntimeAlert = useMemo(() => {
     const pending = runtimeAlerts.filter((alert) => (
       !["resolved", "deferred", "diagnosed"].includes(alert.status)
@@ -745,8 +750,9 @@ export function App() {
           <header className="top-strip">
             <MetricCard label="认知可信度" value={confidenceScore ? `${confidenceScore}` : "--"} suffix="/100" tone="blue" />
             <MetricCard label="已验证证据" value={verifiedCount} tone="cyan" />
-            <MetricCard label="候选根因数" value={hypothesisCount} tone="violet" />
-            <MetricCard label="风险等级" value={displayRisk(riskLevel)} tone={riskLevel} />
+            <MetricCard label={`CPU${metricsIsDemo ? " Demo" : " Real"}`} value={formatPercentValue(cpuFacts.cpu_percent)} tone="violet" />
+            <MetricCard label={`内存${metricsIsDemo ? " Demo" : " Real"}`} value={formatPercentValue(memoryFacts.memory_percent)} tone={riskLevel} />
+            <MetricCard label={`磁盘${metricsIsDemo ? " Demo" : " Real"}`} value={formatPercentValue(diskFacts.disk_percent)} tone="green" />
             <MetricCard label="系统健康度" value={summary?.health_score ?? 86} suffix="/100" tone="green" />
             <div className="clock-card">
               <strong>{clock.toLocaleTimeString("zh-CN", { hour12: false })}</strong>
@@ -2596,6 +2602,74 @@ const sysInfoRows = [
   ["系统负载", "0.68 (1m) / 0.56 (5m) / 0.47 (15m)"],
 ];
 
+function systemMetricFacts(summary: any) {
+  const metrics = summary?.system_metrics ?? {};
+  return {
+    cpu: metrics.cpu?.facts ?? {},
+    memory: metrics.memory?.facts ?? {},
+    disk: metrics.disk?.facts ?? {},
+    isDemo: summary?.metrics_source !== "real" || metrics.is_demo,
+    notice: summary?.metrics_notice ?? "当前不是 real mode，系统资源指标为 demo 样例数据",
+  };
+}
+
+function buildSystemOverviewMetrics(summary: any) {
+  const { cpu, memory, disk, isDemo } = systemMetricFacts(summary);
+  const source = isDemo ? "Demo 样例" : "Real 采集";
+  if (!summary?.system_metrics) return sysOverviewMetrics;
+  const loadavg = Array.isArray(cpu.loadavg) && cpu.loadavg.length ? cpu.loadavg : [0, 0, 0];
+  return [
+    {
+      label: "CPU 使用率",
+      value: formatPercentValue(cpu.cpu_percent),
+      detail: `${cpu.cpu_cores ?? "--"} 核心 / ${source} / ${cpu.cpu_collector ?? cpu.collector ?? "/proc/stat"}`,
+      tone: "blue",
+      icon: "gear",
+      trend: sysOverviewMetrics[0].trend,
+    },
+    {
+      label: "内存使用率",
+      value: formatPercentValue(memory.memory_percent),
+      detail: `${formatMb(memory.memory_used_mb)} / ${formatMb(memory.memory_total_mb)} / ${memory.memory_collector ?? memory.collector ?? "/proc/meminfo"}`,
+      tone: "green",
+      icon: "tool",
+      trend: sysOverviewMetrics[1].trend,
+    },
+    {
+      label: "磁盘使用率",
+      value: formatPercentValue(disk.disk_percent),
+      detail: `${disk.disk_used ?? "--"} / ${disk.disk_total ?? "--"} / ${disk.disk_collector ?? disk.collector ?? "df -h"}`,
+      tone: "purple",
+      icon: "audit",
+      trend: sysOverviewMetrics[2].trend,
+    },
+    {
+      label: "系统负载 (1/5/15)",
+      value: String(loadavg[0] ?? "--"),
+      detail: loadavg.join(" / "),
+      tone: "cyan",
+      icon: "topology",
+      trend: sysOverviewMetrics[3].trend,
+    },
+    ...sysOverviewMetrics.slice(4),
+  ];
+}
+
+function buildSystemInfoRows(summary: any) {
+  const env = summary?.environment ?? {};
+  const { cpu, memory } = systemMetricFacts(summary);
+  return [
+    ["主机名", env.os_release?.name || sysInfoRows[0][1]],
+    ["操作系统", formatOsDisplay(env.os_release?.name)],
+    ["内核/系统", `${env.system ?? "unknown"} / ${env.machine ?? "unknown"}`],
+    ["运行模式", `${displayMode(env.effective_mode ?? "demo")} / ${formatAdapterName(env.adapter)}`],
+    ["CPU", `${cpu.cpu_cores ?? "--"} 核心 / ${cpu.cpu_collector ?? cpu.collector ?? "/proc/stat"}`],
+    ["物理内存", formatMb(memory.memory_total_mb)],
+    ["真实工具就绪", env.real_mode_ready ? "是" : "否"],
+    ["采集说明", summary?.metrics_notice ?? "当前不是 real mode，系统资源指标为 demo 样例数据"],
+  ];
+}
+
 function SystemStatusCenterPage({
   summary,
   onNotice,
@@ -2613,6 +2687,20 @@ function SystemStatusCenterPage({
     ? sysServices
     : sysServices.filter((service) => service.status === serviceFilter.replace(/ .*/, ""));
   const health = summary?.health_score ?? 86;
+  const overviewMetrics = buildSystemOverviewMetrics(summary);
+  const infoRows = buildSystemInfoRows(summary);
+  const { memory, disk, isDemo, notice } = systemMetricFacts(summary);
+  const memoryPercent = Number(memory.memory_percent ?? 61);
+  const diskRows = summary?.system_metrics?.disk?.facts?.disk_percent !== undefined
+    ? [{
+        mount: disk.mount ?? disk.mounted_on ?? "/",
+        type: disk.filesystem ?? "df",
+        total: disk.disk_total ?? "--",
+        used: disk.disk_used ?? "--",
+        percent: Number(disk.disk_percent ?? 0),
+        tone: Number(disk.disk_percent ?? 0) >= 80 ? "high" : Number(disk.disk_percent ?? 0) >= 60 ? "medium" : "low",
+      }, ...sysDisks.slice(1)]
+    : sysDisks;
 
   async function refresh() {
     await onRefresh();
@@ -2629,7 +2717,7 @@ function SystemStatusCenterPage({
       <header className="sys-header">
         <div>
           <h1>系统状态中心</h1>
-          <p>实时监控主机系统资源与服务状态</p>
+          <p>{isDemo ? `演示样例：${notice}` : `真实采集：${notice}`}</p>
         </div>
         <div className="sys-header-actions">
           <label>
@@ -2660,7 +2748,7 @@ function SystemStatusCenterPage({
       </header>
 
       <section className="sys-overview">
-        {sysOverviewMetrics.map((metric) => (
+        {overviewMetrics.map((metric) => (
           <article className={`sys-metric ${metric.tone}`} key={metric.label}>
             <span><SafeIcon name={metric.icon} /></span>
             <div>
@@ -2741,7 +2829,7 @@ function SystemStatusCenterPage({
             <table className="sys-disk-table">
               <thead><tr><th>挂载点</th><th>类型</th><th>总容量</th><th>已使用</th><th>使用率</th></tr></thead>
               <tbody>
-                {sysDisks.map((disk) => (
+                {diskRows.map((disk) => (
                   <tr key={disk.mount}>
                     <td>{disk.mount}</td><td>{disk.type}</td><td>{disk.total}</td><td>{disk.used}</td>
                     <td><span className={`sys-mini-bar ${disk.tone}`}><i style={{ width: `${disk.percent}%` }} /></span>{disk.percent}%</td>
@@ -2778,12 +2866,12 @@ function SystemStatusCenterPage({
         <article className="sys-panel sys-memory">
           <div className="sys-panel-title"><h2>内存使用详情</h2></div>
           <div className="sys-memory-body">
-            <StatusDonut value={61} label="7.8 GB" sub="总内存" />
+            <StatusDonut value={memoryPercent} label={formatMb(memory.memory_total_mb)} sub="总内存" />
             <div className="sys-memory-legend">
-              <span className="green">已使用 <b>4.8 GB (61.2%)</b></span>
-              <span className="blue">已缓存 <b>1.6 GB (20.5%)</b></span>
-              <span className="gold">可用 <b>1.2 GB (15.4%)</b></span>
-              <span className="purple">交换 <b>0.2 GB (2.6%)</b></span>
+              <span className="green">已使用 <b>{formatMb(memory.memory_used_mb)} ({formatPercentValue(memory.memory_percent)})</b></span>
+              <span className="blue">采集源 <b>{memory.memory_collector ?? memory.collector ?? "/proc/meminfo"}</b></span>
+              <span className="gold">可用 <b>{formatMb(memory.memory_available_mb)}</b></span>
+              <span className="purple">模式 <b>{isDemo ? "Demo 样例" : "Real 采集"}</b></span>
             </div>
           </div>
           <p>交换分区: 1.0 GB 总量 / 0.2 GB 已用 (20.3%)</p>
@@ -2793,7 +2881,7 @@ function SystemStatusCenterPage({
         <article className="sys-panel sys-info">
           <div className="sys-panel-title"><h2>系统信息</h2></div>
           <dl>
-            {sysInfoRows.map(([key, value]) => (
+            {infoRows.map(([key, value]) => (
               <div key={key}><dt>{key}</dt><dd>{value}</dd></div>
             ))}
           </dl>
@@ -6097,6 +6185,7 @@ function AuditPanel({
 
 function SystemCard({ summary, surface }: { summary: any; surface: any }) {
   const env = summary?.environment ?? {};
+  const { cpu, memory, disk, isDemo } = systemMetricFacts(summary);
   const riskyPorts = surface?.items?.filter((item: any) => item.risk !== "low").length ?? 0;
 
   return (
@@ -6114,6 +6203,14 @@ function SystemCard({ summary, surface }: { summary: any; surface: any }) {
         <div>
           <dt>工具就绪</dt>
           <dd>{env.real_mode_ready ? "真实工具已就绪" : "演示数据"}</dd>
+        </div>
+        <div>
+          <dt>资源采集</dt>
+          <dd>{isDemo ? "Demo 样例" : "Real 采集"}</dd>
+        </div>
+        <div>
+          <dt>CPU/内存/磁盘</dt>
+          <dd>{formatPercentValue(cpu.cpu_percent)} / {formatPercentValue(memory.memory_percent)} / {formatPercentValue(disk.disk_percent)}</dd>
         </div>
         <div>
           <dt>风险端口</dt>
@@ -6418,11 +6515,12 @@ function buildAuditRequirementCoverage(audit: AuditRecord, result: DiagnosisResu
   const traceTools = new Set((audit.tool_trace ?? result?.tool_trace ?? []).map((item: any) => item.tool));
   const evidenceSummary = audit.evidence_summary ?? result?.evidence_summary ?? {};
   const hasNetworkContext = ["ss_listen", "netstat_listen", "lsof_port"].some((tool) => traceTools.has(tool));
+  const hasResourceContext = ["cpu_stat", "memory_info", "disk_usage"].every((tool) => traceTools.has(tool));
   return [
     {
       label: "OS 环境深度感知",
-      status: environment.system ? "done" : "partial",
-      evidence: `${formatOsDisplay(environment.os_release?.name)} / ${formatAdapterName(environment.adapter)}`,
+      status: environment.system && hasResourceContext ? "done" : "partial",
+      evidence: `${formatOsDisplay(environment.os_release?.name)} / ${formatAdapterName(environment.adapter)} / resource_tools=${hasResourceContext}`,
     },
     {
       label: "MCP/Tools 插件化封装",
@@ -6435,13 +6533,18 @@ function buildAuditRequirementCoverage(audit: AuditRecord, result: DiagnosisResu
       evidence: "journalctl + ss/netstat/lsof + ps 已纳入诊断链路",
     },
     {
+      label: "CPU/内存/磁盘真实采集",
+      status: hasResourceContext ? "done" : "partial",
+      evidence: "/proc/stat + /proc/meminfo + df -h 已纳入诊断工具轨迹",
+    },
+    {
       label: "安全意图校验",
       status: audit.plan?.intent && audit.plan?.steps?.length ? "done" : "partial",
       evidence: `intent=${audit.plan?.intent ?? "unknown"}，steps=${audit.plan?.steps?.length ?? 0}`,
     },
     {
       label: "最小权限执行",
-      status: (audit.tool_trace ?? []).every((item: any) => ["demo", "readonly"].includes(item.mode)) ? "done" : "partial",
+      status: (audit.tool_trace ?? []).every((item: any) => ["demo", "real", "readonly"].includes(item.mode) && (item.risk ?? "readonly") === "readonly") ? "done" : "partial",
       evidence: "当前诊断链路仅调用只读/演示工具，高影响动作需人工确认",
     },
     {
@@ -6465,6 +6568,21 @@ function buildAuditRequirementCoverage(audit: AuditRecord, result: DiagnosisResu
 function rootCauseReady(audit: AuditRecord, result: DiagnosisResult | null) {
   const graph = audit.evidence_graph ?? result?.evidence_graph;
   return Boolean((audit.root_cause ?? result?.root_cause) && graph?.nodes?.length);
+}
+
+function formatPercentValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "--";
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return String(value);
+  return `${numeric.toFixed(Number.isInteger(numeric) ? 0 : 1)}%`;
+}
+
+function formatMb(value: unknown) {
+  if (value === null || value === undefined || value === "") return "--";
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return String(value);
+  if (numeric >= 1024) return `${(numeric / 1024).toFixed(1)} GB`;
+  return `${Math.round(numeric)} MB`;
 }
 
 function normalizeSurfaceItems(items: SurfaceItem[]) {

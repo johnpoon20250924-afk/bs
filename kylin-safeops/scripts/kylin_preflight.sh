@@ -48,17 +48,31 @@ if [ "$pid1" = "systemd" ] || [ -d /run/systemd/system ]; then
   systemd_ready="true"
 fi
 
-required_tools=(systemctl journalctl ss ps python3 node npm)
+required_tools=(systemctl journalctl ss ps python3)
+optional_tools=(netstat lsof df curl wget node npm)
 missing_tools=()
 for tool in "${required_tools[@]}"; do
   if ! has_cmd "$tool"; then
     missing_tools+=("$tool")
   fi
 done
+optional_missing=()
+for tool in "${optional_tools[@]}"; do
+  if ! has_cmd "$tool"; then
+    optional_missing+=("$tool")
+  fi
+done
 
 real_ready="false"
-if [ "$systemd_ready" = "true" ] && has_cmd systemctl && has_cmd journalctl && has_cmd ss && has_cmd ps; then
+if [ "$systemd_ready" = "true" ] && has_cmd systemctl && has_cmd journalctl && has_cmd ss && has_cmd ps && has_cmd python3; then
   real_ready="true"
+fi
+
+immutable_mode="unknown"
+if [ -d /run/ostree-booted ] || has_cmd ostree || has_cmd ostree-pkgs-guard; then
+  immutable_mode="likely_ostree_or_immutable"
+else
+  immutable_mode="not_detected"
 fi
 
 overall="PASS"
@@ -72,15 +86,16 @@ fi
 python_version="$(python3 --version 2>/dev/null || printf 'missing')"
 node_version="$(node --version 2>/dev/null || printf 'missing')"
 npm_version="$(npm --version 2>/dev/null || printf 'missing')"
+backend_port="${BACKEND_PORT:-8010}"
 
 backend_health="not_checked"
 if has_cmd curl; then
-  backend_health="$(curl -fsS --max-time 2 http://127.0.0.1:8000/health 2>/dev/null || printf 'not_running')"
+  backend_health="$(curl -fsS --max-time 2 "http://127.0.0.1:${backend_port}/health" 2>/dev/null || printf 'not_running')"
 fi
 
 env_probe="not_checked"
 if has_cmd curl; then
-  env_probe="$(curl -fsS --max-time 2 http://127.0.0.1:8000/api/environment/probe 2>/dev/null | head -c 500 || printf 'not_running')"
+  env_probe="$(curl -fsS --max-time 2 "http://127.0.0.1:${backend_port}/api/environment/probe" 2>/dev/null | head -c 500 || printf 'not_running')"
 fi
 
 {
@@ -100,6 +115,7 @@ fi
   echo "| Kylin/openKylin 识别 | $is_kylin |"
   echo "| PID 1 | ${pid1:-unknown} |"
   echo "| systemd 就绪 | $systemd_ready |"
+  echo "| Immutable/OSTree 迹象 | $immutable_mode |"
   echo
   echo "## 2. 必要工具"
   echo
@@ -113,6 +129,18 @@ fi
     fi
   done
   echo
+  echo "## 2.1 可选工具"
+  echo
+  echo "| 工具 | 路径 | 状态 |"
+  echo "| --- | --- | --- |"
+  for tool in "${optional_tools[@]}"; do
+    if has_cmd "$tool"; then
+      echo "| $tool | $(cmd_path "$tool") | $(pass) |"
+    else
+      echo "| $tool | missing | $(warn) |"
+    fi
+  done
+  echo
   echo "## 3. 运行时版本"
   echo
   echo "- Python：$python_version"
@@ -122,8 +150,9 @@ fi
   echo "## 4. SafeOps Real Adapter 条件"
   echo
   echo "- systemd：$systemd_ready"
-  echo "- systemctl/journalctl/ss/ps：$real_ready"
+  echo "- systemctl/journalctl/ss/ps/python3：$real_ready"
   echo "- 建议 SAFEOPS_MODE：$( [ "$real_ready" = "true" ] && printf 'real 或 auto' || printf 'demo，待补齐依赖后 real' )"
+  echo "- 开发依赖策略：Windows/Codex 构建，openKylin 仅做真实系统验证；Immutable 系统不假设可 apt install。"
   echo
   echo "## 5. 服务与端口快照"
   echo
@@ -156,7 +185,7 @@ fi
     echo "- 环境满足真实工具链条件，可以运行：\`SAFEOPS_MODE=real bash scripts/start_backend_kylin.sh\`。"
     echo "- 可继续执行：\`SAFEOPS_CONFIRM_DEMO=true bash scripts/kylin_prepare_nginx_conflict.sh\` 制造 nginx 端口冲突演示场景。"
   else
-    echo "- 若缺少依赖，先运行：\`bash scripts/kylin_install_runtime.sh\`。"
+    echo "- 若缺少必要工具，优先确认是否进入完整桌面系统和 systemd；Immutable 系统不要默认执行 apt install。"
     echo "- 若 systemd 不就绪，请使用 Kylin/openKylin 真机或完整虚拟机，不要在普通容器内做最终验收。"
     echo "- 依赖补齐后重新运行：\`bash scripts/kylin_preflight.sh\`。"
   fi

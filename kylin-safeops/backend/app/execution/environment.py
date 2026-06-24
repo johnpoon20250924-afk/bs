@@ -7,8 +7,8 @@ from pathlib import Path
 from backend.app.config import get_settings
 
 
-SYSTEM_TOOLS = ["systemctl", "journalctl", "ss", "netstat", "lsof", "ps"]
-CORE_REAL_TOOLS = ["systemctl", "journalctl", "ps"]
+SYSTEM_TOOLS = ["systemctl", "journalctl", "ss", "netstat", "lsof", "ps", "df"]
+CORE_REAL_TOOLS = ["systemctl", "journalctl", "ps", "df"]
 NETWORK_CONTEXT_TOOLS = ["ss", "netstat", "lsof"]
 
 
@@ -94,7 +94,7 @@ def probe_environment() -> dict:
         "adapter": adapter,
         "adapter_contract": {
             "demo": "使用可控样例数据，不读取本机 systemd 状态",
-            "real": "调用受控白名单工具：systemctl/journalctl/ss/netstat/lsof/ps",
+            "real": "调用受控白名单工具：systemctl/journalctl/ss/netstat/lsof/ps/df，并读取 /proc/stat 与 /proc/meminfo",
             "auto": "环境满足真实工具条件时走 real，否则走 demo",
             "selected": adapter,
         },
@@ -125,6 +125,9 @@ def _capabilities(tool_status: dict[str, bool], real_mode_ready: bool) -> list[d
         {"name": "netstat_listen", "risk": "readonly", "ready": tool_status["netstat"]},
         {"name": "lsof_port", "risk": "readonly", "ready": tool_status["lsof"]},
         {"name": "ps_process", "risk": "readonly", "ready": tool_status["ps"]},
+        {"name": "cpu_stat", "risk": "readonly", "ready": real_mode_ready},
+        {"name": "memory_info", "risk": "readonly", "ready": real_mode_ready},
+        {"name": "disk_usage", "risk": "readonly", "ready": real_mode_ready and tool_status["df"]},
         {"name": "restart_service", "risk": "medium", "ready": real_mode_ready, "requires_confirm": True},
     ]
 

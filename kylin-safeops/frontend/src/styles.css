@@ -4604,7 +4604,7 @@ button.panel-action:hover {
 
 .audit-center {
   display: grid;
-  grid-template-rows: auto auto auto auto minmax(360px, auto) minmax(270px, auto);
+  grid-template-rows: auto auto auto auto auto auto;
   align-content: start;
   gap: 10px;
   min-height: calc(100vh - 20px);
@@ -5183,15 +5183,20 @@ button.panel-action:hover {
 
 .audit-main-grid {
   grid-template-columns: minmax(0, 1.14fr) minmax(410px, 0.95fr);
-  align-items: start;
+  align-items: stretch;
+  min-height: 430px;
 }
 
 .audit-session-list {
-  min-height: 380px;
+  display: grid;
+  grid-template-rows: 34px auto minmax(0, 1fr) 38px;
+  min-height: 430px;
 }
 
 .audit-bottom-grid {
-  grid-template-columns: minmax(0, 0.92fr) minmax(0, 0.92fr) minmax(420px, 1.1fr);
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 0.92fr) minmax(360px, 1.1fr);
+  align-items: stretch;
+  min-height: 270px;
 }
 
 .audit-panel {
@@ -5242,11 +5247,12 @@ button.panel-action:hover {
 }
 
 .audit-table-wrap {
-  height: calc(100% - 102px);
-  overflow: hidden;
+  min-height: 0;
+  overflow: auto;
 }
 
 .audit-table {
+  min-width: 720px;
   width: 100%;
   border-collapse: collapse;
 }
@@ -5337,13 +5343,14 @@ button.panel-action:hover {
 .audit-detail-card {
   display: grid;
   grid-template-rows: 34px 36px minmax(0, 1fr) 40px;
+  min-height: 430px;
 }
 
 .audit-tabs {
   display: flex;
   align-items: end;
   gap: 6px;
-  overflow: hidden;
+  overflow: auto hidden;
   border-bottom: 1px solid rgba(65, 111, 173, 0.16);
   padding: 0 10px;
 }
@@ -5472,13 +5479,19 @@ button.panel-action:hover {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+  min-width: 0;
+  overflow: hidden;
   padding: 0 12px 10px;
 }
 
 .audit-detail-actions button {
-  min-width: 104px;
+  min-width: 0;
+  flex: 0 1 136px;
   min-height: 28px;
   padding: 0 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .audit-detail-actions button:disabled {
@@ -5708,6 +5721,7 @@ button.panel-action:hover {
 .audit-decision-card {
   display: grid;
   grid-template-rows: 34px minmax(0, 1fr);
+  min-height: 270px;
 }
 
 .audit-exec-timeline {
@@ -5868,7 +5882,7 @@ button.panel-action:hover {
   align-content: start;
   min-height: 0;
   padding: 10px;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .audit-evidence-card {
@@ -5942,26 +5956,32 @@ button.panel-action:hover {
 }
 
 .audit-decision-card {
+  min-width: 0;
   padding-bottom: 10px;
 }
 
 .audit-decision-flow {
-  display: grid;
-  grid-template-columns: minmax(104px, 1fr) 18px minmax(80px, 0.8fr) 18px minmax(80px, 0.8fr) 18px minmax(88px, 0.8fr);
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 16px 12px 8px;
+  min-width: 0;
 }
 
 .decision-stack {
   display: grid;
+  flex: 1 1 138px;
   gap: 9px;
+  min-width: 0;
 }
 
 .audit-decision-flow span {
   display: grid;
   place-items: center;
+  flex: 1 1 112px;
   min-height: 46px;
+  min-width: 0;
   border: 1px solid rgba(52, 205, 140, 0.56);
   border-radius: 5px;
   background: rgba(17, 64, 55, 0.54);
@@ -5973,7 +5993,11 @@ button.panel-action:hover {
 }
 
 .audit-decision-flow span small {
+  max-width: 100%;
+  overflow: hidden;
   color: #9bc8b4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 10px;
   font-weight: 600;
 }
@@ -5992,6 +6016,7 @@ button.panel-action:hover {
 
 .audit-decision-flow > i {
   position: relative;
+  flex: 0 0 18px;
   height: 1px;
   background: rgba(123, 157, 204, 0.52);
 }
@@ -6009,7 +6034,9 @@ button.panel-action:hover {
 }
 
 .audit-conclusion {
+  min-width: 0;
   padding: 0 14px;
+  overflow: auto;
 }
 
 .audit-conclusion strong {
@@ -6030,6 +6057,29 @@ button.panel-action:hover {
   color: #9eb3ce;
   padding-left: 16px;
   font-size: 11px;
+}
+
+@media (max-width: 1500px) {
+  .audit-metric-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .audit-requirement-panel {
+    grid-template-columns: 150px minmax(0, 1fr);
+  }
+
+  .audit-requirement-proof {
+    grid-column: 1 / -1;
+  }
+
+  .audit-bottom-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .audit-decision-card {
+    grid-column: 1 / -1;
+    min-height: 250px;
+  }
 }
 
 .audit-evidence-drawer {
@@ -11248,6 +11298,55 @@ button.panel-action:hover {
 }
 
 @media (max-width: 920px) {
+  .audit-center {
+    grid-template-rows: auto;
+  }
+
+  .audit-metric-row,
+  .audit-main-grid,
+  .audit-bottom-grid,
+  .audit-requirement-panel,
+  .audit-detail-body {
+    grid-template-columns: 1fr;
+  }
+
+  .audit-main-grid,
+  .audit-session-list,
+  .audit-detail-card,
+  .audit-exec-timeline,
+  .audit-evidence-summary,
+  .audit-decision-card {
+    min-height: auto;
+  }
+
+  .audit-session-list,
+  .audit-detail-card {
+    max-height: none;
+  }
+
+  .audit-filter-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .audit-risk-card {
+    border-left: 0;
+    border-top: 1px solid rgba(65, 111, 173, 0.16);
+    padding-top: 12px;
+    padding-left: 0;
+  }
+
+  .audit-tab-evidence {
+    grid-template-columns: 1fr;
+  }
+
+  .audit-detail-actions {
+    flex-wrap: wrap;
+  }
+
+  .audit-detail-actions button {
+    flex: 1 1 140px;
+  }
+
   .redlab-content-grid,
   .redlab-bottom-grid {
     grid-template-columns: 1fr;

@@ -29,6 +29,21 @@ TOOL_CONTRACTS = {
         "allowed_args": {"pid_min": 1},
         "side_effect": False,
     },
+    "cpu_stat": {
+        "risk": "readonly",
+        "allowed_args": {},
+        "side_effect": False,
+    },
+    "memory_info": {
+        "risk": "readonly",
+        "allowed_args": {},
+        "side_effect": False,
+    },
+    "disk_usage": {
+        "risk": "readonly",
+        "allowed_args": {"mounts": ["/", "/home", "/var", "/boot", "/tmp"]},
+        "side_effect": False,
+    },
     "restart_service": {
         "risk": "medium",
         "allowed_args": {"service": ["nginx", "redis", "mysql"]},
@@ -77,6 +92,11 @@ def validate_tool_call(tool_name: str, args: dict) -> None:
         pid = int(args.get("pid", 0))
         if pid < contract["allowed_args"]["pid_min"]:
             raise ToolContractError(f"PID 不合法：{pid}")
+
+    if tool_name == "disk_usage":
+        mount = str(args.get("mount", "/"))
+        if mount not in contract["allowed_args"]["mounts"]:
+            raise ToolContractError(f"挂载点不在允许列表：{mount}")
 
     if tool_name == "restart_service":
         service = str(args.get("service", "")).replace(".service", "")

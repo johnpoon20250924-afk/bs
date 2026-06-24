@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from backend.app.cognition.diagnosis import diagnose_nginx_failure
+from backend.app.cognition.diagnosis import diagnose_system_issue
 
 router = APIRouter()
 
@@ -15,4 +15,4 @@ class DiagnoseRequest(BaseModel):
 
 @router.post("/diagnose")
 def diagnose(request: DiagnoseRequest) -> dict:
-    return diagnose_nginx_failure(request.query, request.source)
+    return diagnose_system_issue(request.query, request.source)

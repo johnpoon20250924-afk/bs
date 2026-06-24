@@ -37,8 +37,9 @@ else
   demo_status="默认跳过。需要时运行：SAFEOPS_CONFIRM_DEMO=true bash scripts/kylin_prepare_nginx_conflict.sh"
 fi
 
-backend_cmd="SAFEOPS_MODE=real bash scripts/start_backend_kylin.sh"
-frontend_cmd="bash scripts/start_frontend_kylin.sh"
+backend_cmd="SAFEOPS_MODE=real bash scripts/start_backend_kylin.sh  # 仅当 Python/FastAPI 依赖已随产物提供"
+frontend_cmd="bash scripts/start_frontend_kylin.sh  # 仅当 Node/npm 或已构建前端产物可用"
+verify_cmd="bash scripts/kylin_immutable_verify.sh"
 
 {
   echo "# KylinSafeOps 迁移预检总报告"
@@ -53,7 +54,8 @@ frontend_cmd="bash scripts/start_frontend_kylin.sh"
   echo "| 脚本 | 用途 | 状态 |"
   echo "| --- | --- | --- |"
   echo "| scripts/kylin_preflight.sh | 依赖检查与兼容性报告 | $(script_status scripts/kylin_preflight.sh) |"
-  echo "| scripts/kylin_install_runtime.sh | openKylin/KylinOS 依赖安装 | $(script_status scripts/kylin_install_runtime.sh) |"
+  echo "| scripts/kylin_immutable_verify.sh | Immutable/openKylin 无安装真实系统验证 | $(script_status scripts/kylin_immutable_verify.sh) |"
+  echo "| scripts/kylin_install_runtime.sh | 可写 apt 系统依赖安装（Immutable 系统不默认使用） | $(script_status scripts/kylin_install_runtime.sh) |"
   echo "| scripts/kylin_prepare_nginx_conflict.sh | nginx 端口冲突演示数据 | $(script_status scripts/kylin_prepare_nginx_conflict.sh) |"
   echo "| scripts/kylin_cleanup_demo_services.sh | 清理端口冲突演示数据 | $(script_status scripts/kylin_cleanup_demo_services.sh) |"
   echo "| scripts/start_backend_kylin.sh | real 模式启动后端 | $(script_status scripts/start_backend_kylin.sh) |"
@@ -70,7 +72,7 @@ frontend_cmd="bash scripts/start_frontend_kylin.sh"
   echo "## 3. 下一步命令"
   echo
   echo '```bash'
-  echo "bash scripts/kylin_install_runtime.sh"
+  echo "$verify_cmd"
   echo "bash scripts/kylin_migration_precheck.sh"
   echo "$backend_cmd"
   echo "$frontend_cmd"
@@ -79,6 +81,7 @@ frontend_cmd="bash scripts/start_frontend_kylin.sh"
   echo "## 4. 演示数据"
   echo
   echo "- 端口冲突造数默认不会执行，避免误改真实环境。"
+  echo "- openKylin Immutable 环境中如果 apt 被 ostree-pkgs-guard 拦截，请不要强行安装依赖，优先运行无安装验证脚本。"
   echo "- 只在比赛演示虚拟机中运行："
   echo
   echo '```bash'

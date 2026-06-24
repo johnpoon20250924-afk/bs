@@ -10,6 +10,25 @@ if ! command -v apt-get >/dev/null 2>&1; then
   exit 1
 fi
 
+if [ -d /run/ostree-booted ] || command -v ostree-pkgs-guard >/dev/null 2>&1; then
+  cat <<'MSG'
+This openKylin environment appears to be OSTree/Immutable.
+Do not assume apt install is allowed here.
+
+Recommended flow:
+  1. Develop/build on Windows + Codex.
+  2. Copy the project/artifacts into openKylin.
+  3. Run: bash scripts/kylin_immutable_verify.sh
+  4. Use the generated report and screenshots as real system proof.
+
+If you are on a writable Kylin image and still want apt install, set:
+  SAFEOPS_ALLOW_APT_INSTALL=true
+MSG
+  if [ "${SAFEOPS_ALLOW_APT_INSTALL:-false}" != "true" ]; then
+    exit 2
+  fi
+fi
+
 sudo apt-get update
 sudo apt-get install -y \
   curl \

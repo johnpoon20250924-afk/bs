@@ -8,6 +8,6 @@ if [ ! -d "node_modules" ]; then
   npm install
 fi
 
-export VITE_API_BASE_URL="${VITE_API_BASE_URL:-http://localhost:8000}"
+export VITE_API_BASE_URL="${VITE_API_BASE_URL:-http://localhost:${BACKEND_PORT:-8010}}"
 npm run dev -- --host 0.0.0.0
 

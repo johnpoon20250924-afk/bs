@@ -64,6 +64,16 @@ export async function getDashboardSummary() {
   return response.json();
 }
 
+export async function getDashboardMetrics() {
+  const response = await fetch(`${API_BASE}/api/dashboard/metrics`);
+
+  if (!response.ok) {
+    throw new Error("dashboard metrics request failed");
+  }
+
+  return response.json();
+}
+
 export async function getEnvironmentProbe() {
   const response = await fetch(`${API_BASE}/api/environment/probe`);
 
@@ -74,11 +84,11 @@ export async function getEnvironmentProbe() {
   return response.json();
 }
 
-export async function getShadowPreview(service = "nginx") {
+export async function getShadowPreview(service = "nginx", port?: number) {
   const response = await fetch(`${API_BASE}/api/shadow/preview`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({service})
+    body: JSON.stringify(port ? {service, port} : {service})
   });
 
   if (!response.ok) {

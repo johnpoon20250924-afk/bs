@@ -146,3 +146,50 @@ SAFEOPS_CONFIRM_DEMO=true bash scripts/kylin_prepare_nginx_conflict.sh
 ```
 
 详细步骤见 `deploy/kylin/部署说明.md`。
+
+## 国产操作系统兼容性验证
+
+项目已在 openKylin 2.0 SP2 (nile) 国产操作系统环境完成迁移与运行验证。验证环境为 Windows 11 宿主机 + Oracle VirtualBox 虚拟机，客体系统为 openKylin 2.0 SP2。
+
+本次验证覆盖：
+
+- openKylin 系统识别：`cat /etc/os-release`
+- 运行依赖检查：Python 3.12.2、Node v18.19.1、npm 9.2.0、git 2.43.0
+- 迁移预检查：`bash scripts/kylin_preflight.sh`
+- 后端启动：`SAFEOPS_MODE=real bash scripts/start_backend_kylin.sh`
+- 健康检查：`curl http://127.0.0.1:8000/health`
+- Real Mode 验证：`curl http://127.0.0.1:8000/api/environment/probe`
+- 前端页面验证：openKylin 桌面浏览器访问 `http://localhost:5173`
+
+关键验证结论：
+
+```text
+Kylin/openKylin 识别：true
+总体结论：PASS
+configured_mode：real
+effective_mode：real
+real_mode_ready：true
+adapter：kylin-real-adapter
+os_release.name：openKylin
+```
+
+验证材料已归档到：
+
+```text
+docs/kylin_verification/
+```
+
+核心文档：
+
+- `docs/kylin_verification/README.md`
+- `docs/kylin_verification/kylin_migration_report.md`
+- `docs/kylin_verification/deployment_verification.md`
+- `docs/kylin_verification/ppt_screenshot_notes.md`
+- `docs/kylin_verification/frontend_verification_notes.md`
+- `docs/kylin_verification/screenshots/04_frontend_openkylin/`
+
+答辩结论：
+
+```text
+KylinSafeOps 已在 openKylin 2.0 SP2 国产操作系统环境完成部署与运行验证。系统能够正确识别 openKylin 平台，后端服务正常启动，API 接口响应正常，并成功进入 Real Mode。前端核心页面也已在 openKylin 桌面浏览器中正常打开，证明项目具备国产操作系统兼容能力和端到端迁移能力。
+```

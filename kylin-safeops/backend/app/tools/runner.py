@@ -1,4 +1,6 @@
+import os
 import re
+from pathlib import Path
 
 from backend.app.execution.environment import probe_environment
 from backend.app.execution.tool_contract import ToolContractError, validate_tool_call
@@ -131,6 +133,65 @@ def _run_demo(tool_name: str, args: dict) -> dict:
             "duration_ms": 9,
         }
 
+    if tool_name == "cpu_stat":
+        facts = {
+            "cpu_percent": 23.7,
+            "cpu_cores": 4,
+            "loadavg": [0.68, 0.56, 0.47],
+            "collector": "/proc/stat",
+            "cpu_collector": "/proc/stat",
+            "is_demo": True,
+        }
+        return {
+            "ok": True,
+            "summary": "Demo CPU 使用率 23.7%",
+            "raw": "cpu  235120 0 83120 920000 1200 0 2100 0 0 0",
+            "facts": facts,
+            "command": "cat /proc/stat",
+            "duration_ms": 5,
+        }
+
+    if tool_name == "memory_info":
+        facts = {
+            "memory_total_mb": 7987,
+            "memory_used_mb": 4887,
+            "memory_available_mb": 3100,
+            "memory_percent": 61.2,
+            "collector": "/proc/meminfo",
+            "memory_collector": "/proc/meminfo",
+            "is_demo": True,
+        }
+        return {
+            "ok": True,
+            "summary": "Demo 内存使用率 61.2%",
+            "raw": "MemTotal: 8178688 kB\nMemAvailable: 3174400 kB",
+            "facts": facts,
+            "command": "cat /proc/meminfo",
+            "duration_ms": 4,
+        }
+
+    if tool_name == "disk_usage":
+        mount = str(args.get("mount", "/"))
+        facts = {
+            "mount": mount,
+            "filesystem": "/dev/sda2",
+            "disk_total": "96G",
+            "disk_used": "52G",
+            "disk_available": "44G",
+            "disk_percent": 54,
+            "collector": "df -h",
+            "disk_collector": "df -h",
+            "is_demo": True,
+        }
+        return {
+            "ok": True,
+            "summary": f"Demo 磁盘 {mount} 使用率 54%",
+            "raw": "Filesystem Size Used Avail Use% Mounted on\n/dev/sda2 96G 52G 44G 54% /",
+            "facts": facts,
+            "command": f"df -h {mount}",
+            "duration_ms": 8,
+        }
+
     return {"ok": False, "summary": "demo 模式未实现该工具", "raw": "", "facts": {}}
 
 
@@ -172,7 +233,7 @@ def _run_real(tool_name: str, args: dict) -> dict:
             "returncode": result["returncode"],
             "summary": f"{port} 端口占用：{process or 'unknown'} / PID {pid or 'unknown'}",
             "raw": raw,
-            "facts": {"port": port, "pid": pid, "process": process, "network_source": "ss"},
+            "facts": {"port": port, "pid": pid, "process": process, "network_source": "ss", "ss_confirmed": bool(matching)},
             "command": result.get("command", "ss -lntp"),
             "duration_ms": result.get("duration_ms", 0),
         }
@@ -213,6 +274,15 @@ def _run_real(tool_name: str, args: dict) -> dict:
         result = run_command(["ps", "-p", pid, "-o", "pid,user,comm,args"])
         process = _extract_process_name(result["stdout"])
         return _format_result(result, f"PID {pid} 进程：{process or '未知'}", {"pid": int(pid), "process": process})
+
+    if tool_name == "cpu_stat":
+        return _read_cpu_stat()
+
+    if tool_name == "memory_info":
+        return _read_memory_info()
+
+    if tool_name == "disk_usage":
+        return _read_disk_usage(str(args.get("mount", "/")))
 
     return {"ok": False, "summary": "real 模式未实现该工具", "raw": "", "facts": {}}
 
@@ -289,6 +359,113 @@ def _extract_lsof_owner(text: str) -> dict:
         "process": parts[0],
         "pid": int(parts[1]) if parts[1].isdigit() else None,
         "user": parts[2],
+    }
+
+
+def _read_cpu_stat() -> dict:
+    stat_path = Path("/proc/stat")
+    load_path = Path("/proc/loadavg")
+    if not stat_path.exists():
+        return {"ok": False, "summary": "/proc/stat 不存在", "raw": "", "facts": {}, "command": "cat /proc/stat", "duration_ms": 0}
+
+    raw = stat_path.read_text(encoding="utf-8", errors="ignore")
+    cpu_line = next((line for line in raw.splitlines() if line.startswith("cpu ")), "")
+    values = [int(value) for value in cpu_line.split()[1:] if value.isdigit()]
+    total = sum(values)
+    idle = (values[3] if len(values) > 3 else 0) + (values[4] if len(values) > 4 else 0)
+    cpu_percent = round((1 - idle / total) * 100, 1) if total else 0.0
+    loadavg = []
+    if load_path.exists():
+        load_values = load_path.read_text(encoding="utf-8", errors="ignore").split()[:3]
+        loadavg = [float(value) for value in load_values]
+
+    facts = {
+        "cpu_percent": cpu_percent,
+        "cpu_cores": os.cpu_count() or 0,
+        "loadavg": loadavg,
+        "collector": "/proc/stat",
+        "cpu_collector": "/proc/stat",
+        "is_demo": False,
+    }
+    return {
+        "ok": bool(cpu_line),
+        "summary": f"CPU 使用率 {cpu_percent}%",
+        "raw": cpu_line,
+        "facts": facts,
+        "command": "cat /proc/stat",
+        "duration_ms": 0,
+    }
+
+
+def _read_memory_info() -> dict:
+    mem_path = Path("/proc/meminfo")
+    if not mem_path.exists():
+        return {"ok": False, "summary": "/proc/meminfo 不存在", "raw": "", "facts": {}, "command": "cat /proc/meminfo", "duration_ms": 0}
+
+    raw = mem_path.read_text(encoding="utf-8", errors="ignore")
+    data = {}
+    for line in raw.splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        number = value.strip().split()[0]
+        if number.isdigit():
+            data[key] = int(number)
+    total_kb = data.get("MemTotal", 0)
+    available_kb = data.get("MemAvailable", data.get("MemFree", 0))
+    used_kb = max(0, total_kb - available_kb)
+    percent = round(used_kb / total_kb * 100, 1) if total_kb else 0.0
+    facts = {
+        "memory_total_mb": round(total_kb / 1024),
+        "memory_used_mb": round(used_kb / 1024),
+        "memory_available_mb": round(available_kb / 1024),
+        "memory_percent": percent,
+        "collector": "/proc/meminfo",
+        "memory_collector": "/proc/meminfo",
+        "is_demo": False,
+    }
+    return {
+        "ok": bool(total_kb),
+        "summary": f"内存使用率 {percent}%",
+        "raw": "\n".join(raw.splitlines()[:8]),
+        "facts": facts,
+        "command": "cat /proc/meminfo",
+        "duration_ms": 0,
+    }
+
+
+def _read_disk_usage(mount: str) -> dict:
+    result = run_command(["df", "-h", mount])
+    raw = result["stdout"] or result["stderr"]
+    parsed = _parse_df_output(raw)
+    percent = parsed.get("disk_percent")
+    summary = f"磁盘 {mount} 使用率 {percent}%" if percent is not None else f"磁盘 {mount} 使用率未知"
+    return {
+        "ok": result["ok"] and bool(parsed),
+        "returncode": result["returncode"],
+        "summary": summary,
+        "raw": raw,
+        "facts": {**parsed, "mount": mount, "collector": "df -h", "disk_collector": "df -h", "is_demo": False},
+        "command": result.get("command", f"df -h {mount}"),
+        "duration_ms": result.get("duration_ms", 0),
+    }
+
+
+def _parse_df_output(text: str) -> dict:
+    lines = [line for line in text.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return {}
+    parts = lines[1].split()
+    if len(parts) < 6:
+        return {}
+    percent_text = parts[4].rstrip("%")
+    return {
+        "filesystem": parts[0],
+        "disk_total": parts[1],
+        "disk_used": parts[2],
+        "disk_available": parts[3],
+        "disk_percent": int(percent_text) if percent_text.isdigit() else None,
+        "mounted_on": parts[5],
     }
 
 

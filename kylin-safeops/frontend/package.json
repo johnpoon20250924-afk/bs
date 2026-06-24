@@ -14,5 +14,8 @@
     "three": "^0.184.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.7"
+  },
+  "devDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.62.2"
   }
 }

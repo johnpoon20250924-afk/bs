@@ -8,9 +8,10 @@ router = APIRouter()
 
 class ShadowPreviewRequest(BaseModel):
     service: str = "nginx"
+    port: int | None = None
 
 
 @router.post("/preview")
 def shadow_preview(request: ShadowPreviewRequest) -> dict:
-    return preview_restart_service(request.service)
+    return preview_restart_service(request.service, request.port)
 

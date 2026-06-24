@@ -72,6 +72,9 @@ def export_audit_markdown(audit_id: str) -> str | None:
     graph = audit.get("evidence_graph", {})
     environment = audit.get("environment", {})
     evidence_summary = audit.get("evidence_summary", {})
+    evidence_promotion = audit.get("evidence_promotion") or {}
+    ai_enhancement = audit.get("ai_enhancement") or {}
+    safety_boundary = audit.get("safety_boundary") or {}
     diagnosis_source = audit.get("diagnosis_source") or {}
     alert_event = audit.get("alert_event") or {}
     requirement_coverage = audit.get("requirement_coverage") or _requirement_coverage(audit)
@@ -133,6 +136,14 @@ def export_audit_markdown(audit_id: str) -> str | None:
             f"(risk={step.get('risk')})"
         )
 
+    lines.extend([
+        "",
+        "## Evidence Promotion",
+        f"- 策略：{evidence_promotion.get('policy', '工具证据经校验后才能升级为 Verified。')}",
+    ])
+    for item in evidence_promotion.get("stages", []):
+        lines.append(f"- `{item.get('stage')}` / {item.get('status')}：{item.get('detail')}")
+
     lines.extend(["", "## 已验证证据"])
     for item in knowledge_state.get("verified", []):
         lines.append(f"- {item.get('fact') or item.get('value') or item.get('summary')}")
@@ -159,7 +170,29 @@ def export_audit_markdown(audit_id: str) -> str | None:
         if item.get("raw"):
             lines.append(f"  - 原始片段：`{_clip(str(item.get('raw'))).replace('`', '')}`")
 
-    lines.extend(["", "## 认知审查", audit.get("critic", {}).get("conclusion", "")])
+    lines.extend(["", "## Safety Boundary"])
+    if safety_boundary:
+        for key, value in safety_boundary.items():
+            lines.append(f"- `{key}`：{value}")
+    else:
+        lines.append("- restart_service 默认不直接执行，必须经过影子执行和人工确认。")
+
+    lines.extend(["", "## Audit Chain"])
+    for item in audit.get("audit_chain", []):
+        lines.append(f"- `{item.get('stage')}` / {item.get('status')}: {item.get('detail')}")
+
+    lines.extend([
+        "",
+        "## 认知审查",
+        audit.get("critic", {}).get("conclusion", ""),
+        "",
+        "## DeepSeek 可插拔增强",
+        f"- Provider：{ai_enhancement.get('provider', audit.get('critic', {}).get('provider', 'rule-fallback'))}",
+        f"- DeepSeek 启用：{ai_enhancement.get('deepseek_enabled', audit.get('critic', {}).get('enabled', False))}",
+        f"- 角色：{ai_enhancement.get('role', '诊断解释、修复建议生成、认知审查 Critic')}",
+        f"- 兜底：{ai_enhancement.get('fallback', '模型不可用时使用规则兜底，核心感知、诊断、安全校验、审计回放不依赖外部模型。')}",
+        f"- 执行边界：{ai_enhancement.get('execution_boundary', '模型不直接执行命令，不绕过 Tool Contract。')}",
+    ])
     return "\n".join(lines)
 
 
@@ -178,7 +211,11 @@ def _build_audit(audit_id: str, replay_id: str, record: dict) -> dict:
         "evidence_graph": record["evidence_graph"],
         "root_cause": record["root_cause"],
         "critic": record.get("critic", {}),
+        "ai_enhancement": record.get("ai_enhancement", {}),
+        "safety_boundary": record.get("safety_boundary", {}),
+        "evidence_promotion": record.get("evidence_promotion", {}),
         "evidence_summary": record.get("evidence_summary", {}),
+        "audit_chain": record.get("audit_chain") or _audit_chain(record),
         "diagnosis_source": record.get("diagnosis_source"),
         "alert_event": record.get("alert_event"),
         "requirement_coverage": record.get("requirement_coverage") or _requirement_coverage(record),
@@ -215,10 +252,50 @@ def _audit_session_summary(audit: dict) -> dict:
     }
 
 
+def _audit_chain(record: dict) -> list[dict]:
+    plan = record.get("plan", {})
+    traces = record.get("tool_trace", [])
+    evidence = record.get("evidence_summary", {})
+    blocked = [item for item in traces if item.get("mode") in {"blocked", "policy"} or item.get("risk") == "blocked"]
+    return [
+        {
+            "stage": "user_input",
+            "status": "captured" if plan.get("user_query") else "missing",
+            "detail": plan.get("user_query", ""),
+        },
+        {
+            "stage": "agent_analysis",
+            "status": "planned" if plan.get("steps") else "missing",
+            "detail": plan.get("intent", ""),
+        },
+        {
+            "stage": "tool_contract",
+            "status": "blocked" if blocked else "pass",
+            "detail": f"{len(blocked)} blocked / {len(traces)} total tool calls",
+        },
+        {
+            "stage": "tool_execution",
+            "status": "completed" if traces else "missing",
+            "detail": f"{evidence.get('successful_tool_calls', 0)} successful calls",
+        },
+        {
+            "stage": "evidence_graph",
+            "status": "built" if record.get("evidence_graph", {}).get("nodes") else "missing",
+            "detail": "Evidence nodes and edges persisted.",
+        },
+        {
+            "stage": "final_answer",
+            "status": "traceable" if evidence.get("all_conclusions_traceable") else "partial",
+            "detail": record.get("root_cause", {}).get("summary", ""),
+        },
+    ]
+
+
 def _build_replay(replay_id: str, record: dict) -> dict:
     events = [
         {"type": "plan_created", "title": "生成 PlanSpec", "payload": record["plan"]},
         {"type": "knowledge_initialized", "title": "初始化 Knowledge State", "payload": record["knowledge_state"]},
+        {"type": "evidence_promotion_policy", "title": "建立 Evidence Promotion 规则", "payload": record.get("evidence_promotion", {})},
     ]
     for item in record["tool_trace"]:
         events.append({"type": "tool_called", "title": f"调用 {item.get('tool')}", "payload": item})
@@ -226,6 +303,7 @@ def _build_replay(replay_id: str, record: dict) -> dict:
         [
             {"type": "hypothesis_updated", "title": "候选根因评分更新", "payload": record["hypotheses"]},
             {"type": "graph_built", "title": "构建反事实证据图", "payload": record["evidence_graph"]},
+            {"type": "critic_reviewed", "title": "认知审查与可插拔 AI 增强", "payload": record.get("critic", {})},
             {"type": "root_cause_verified", "title": "输出根因结论", "payload": record["root_cause"]},
         ]
     )
@@ -251,13 +329,14 @@ def _requirement_coverage(record: dict) -> list[dict]:
     tools = environment.get("tools", {})
     trace_tools = {item.get("tool") for item in traces}
     has_network_context = bool({"ss_listen", "netstat_listen", "lsof_port"} & trace_tools)
+    has_resource_context = {"cpu_stat", "memory_info", "disk_usage"}.issubset(trace_tools)
     all_traceable = bool(evidence_summary.get("all_conclusions_traceable"))
 
     return [
         {
             "label": "OS 环境深度感知",
-            "status": "done" if environment.get("system") else "partial",
-            "evidence": f"{environment.get('system', 'unknown')} / adapter={environment.get('adapter', 'unknown')}",
+            "status": "done" if environment.get("system") and has_resource_context else "partial",
+            "evidence": f"{environment.get('system', 'unknown')} / adapter={environment.get('adapter', 'unknown')} / resource_tools={has_resource_context}",
         },
         {
             "label": "MCP/Tools 插件化封装",
@@ -270,13 +349,18 @@ def _requirement_coverage(record: dict) -> list[dict]:
             "evidence": "journalctl + ss/netstat/lsof + ps 已纳入诊断链路",
         },
         {
+            "label": "CPU/内存/磁盘真实采集",
+            "status": "done" if has_resource_context else "partial",
+            "evidence": "/proc/stat + /proc/meminfo + df -h 已纳入工具轨迹",
+        },
+        {
             "label": "安全意图校验",
             "status": "done" if plan.get("intent") and plan.get("steps") else "partial",
             "evidence": f"intent={plan.get('intent', 'unknown')}，steps={len(plan.get('steps', []))}",
         },
         {
             "label": "最小权限执行",
-            "status": "done" if all(item.get("mode") in {"demo", "readonly"} for item in traces) else "partial",
+            "status": "done" if all(item.get("mode") in {"demo", "real", "readonly"} and item.get("risk", "readonly") == "readonly" for item in traces) else "partial",
             "evidence": "当前诊断链路仅调用只读/演示工具，高影响动作需人工确认",
         },
         {

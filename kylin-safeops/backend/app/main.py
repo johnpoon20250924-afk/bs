@@ -2,17 +2,23 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from backend.app.api.routes_agent import router as agent_router
 from backend.app.api.routes_attack_surface import router as attack_surface_router
 from backend.app.api.routes_audit import router as audit_router
 from backend.app.api.routes_dashboard import router as dashboard_router
 from backend.app.api.routes_environment import router as environment_router
+from backend.app.api.routes_mcp import router as mcp_router
 from backend.app.api.routes_redteam import router as redteam_router
 from backend.app.api.routes_replay import router as replay_router
 from backend.app.api.routes_runtime import router as runtime_router
 from backend.app.api.routes_shadow import router as shadow_router
 from backend.app.runtime.alerts import start_runtime_scheduler, stop_runtime_scheduler
+
+
+class UTF8JSONResponse(JSONResponse):
+    media_type = "application/json; charset=utf-8"
 
 
 @asynccontextmanager
@@ -24,7 +30,7 @@ async def lifespan(app: FastAPI):
         await stop_runtime_scheduler()
 
 
-app = FastAPI(title="KylinSafeOps", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="KylinSafeOps", version="0.1.0", lifespan=lifespan, default_response_class=UTF8JSONResponse)
 
 app.add_middleware(
     CORSMiddleware,
@@ -34,9 +40,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def add_json_charset(request, call_next):
+    response = await call_next(request)
+    if response.headers.get("content-type") == "application/json":
+        response.headers["content-type"] = "application/json; charset=utf-8"
+    return response
+
 app.include_router(dashboard_router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(agent_router, prefix="/api/agent", tags=["agent"])
 app.include_router(environment_router, prefix="/api/environment", tags=["environment"])
+app.include_router(mcp_router, prefix="/api/mcp", tags=["mcp"])
 app.include_router(audit_router, prefix="/api/audit", tags=["audit"])
 app.include_router(replay_router, prefix="/api/replay", tags=["replay"])
 app.include_router(shadow_router, prefix="/api/shadow", tags=["shadow"])
