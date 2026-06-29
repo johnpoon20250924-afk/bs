@@ -16,6 +16,10 @@ def preview_restart_service(service: str = "nginx", port: int | None = None) -> 
             "impact": [],
             "rollback": [],
             "requires_confirm": True,
+            "confirmation_mode": "dry_run_shadow_commit",
+            "confirm_effect": "blocked_by_contract_no_restart",
+            "real_execution": False,
+            "production_executor": "disabled_by_default",
         }
 
     status = run_tool("systemctl_status", {"service": service})
@@ -50,6 +54,10 @@ def preview_restart_service(service: str = "nginx", port: int | None = None) -> 
             f"可再次执行 systemctl start {service}.service 恢复服务",
         ],
         "requires_confirm": True,
+        "confirmation_mode": "dry_run_shadow_commit",
+        "confirm_effect": "record_audit_only_no_restart",
+        "real_execution": False,
+        "production_executor": "disabled_by_default",
         "tool_trace": [status, port_check],
     }
 

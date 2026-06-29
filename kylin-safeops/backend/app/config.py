@@ -3,6 +3,13 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 
+def _float_env(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+
 @dataclass(frozen=True)
 class Settings:
     safeops_mode: str
@@ -12,6 +19,8 @@ class Settings:
     deepseek_api_key: str
     deepseek_base_url: str
     deepseek_model: str
+    runtime_auto_diagnose: bool
+    runtime_auto_diagnose_min_confidence: float
 
 
 @lru_cache
@@ -30,4 +39,6 @@ def get_settings() -> Settings:
         deepseek_api_key=os.getenv("DEEPSEEK_API_KEY", ""),
         deepseek_base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
         deepseek_model=os.getenv("DEEPSEEK_MODEL", "deepseek-reasoner"),
+        runtime_auto_diagnose=os.getenv("SAFEOPS_RUNTIME_AUTO_DIAGNOSE", "false").strip().lower() in {"1", "true", "yes", "on"},
+        runtime_auto_diagnose_min_confidence=_float_env("SAFEOPS_RUNTIME_AUTO_DIAGNOSE_MIN_CONFIDENCE", 0.9),
     )

@@ -5,6 +5,8 @@ import contextlib
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from backend.app.cognition.diagnosis import diagnose_system_issue
+from backend.app.config import get_settings
 from backend.app.execution.environment import probe_environment
 from backend.app.runtime.models import RuntimeAlert, RuntimeEvidence
 from backend.app.tools.runner import run_tool
@@ -48,11 +50,13 @@ def run_runtime_scan(trigger: str = "manual") -> list[dict]:
         observations = _demo_events(now, env)
 
     _EVENT_CACHE = _merge_event_state(observations, now)
+    _maybe_auto_diagnose_runtime_alerts(trigger)
     return list(_EVENT_CACHE)
 
 
 def runtime_status(events: list[dict] | None = None) -> dict:
     env = probe_environment()
+    settings = get_settings()
     active_events = events if events is not None else list(_EVENT_CACHE)
     pending_events = [item for item in active_events if item.get("status") not in {"resolved", "deferred"}]
     return {
@@ -69,6 +73,8 @@ def runtime_status(events: list[dict] | None = None) -> dict:
         "next_scan_at": _NEXT_SCAN_AT,
         "last_scan_trigger": _SCAN_TRIGGER,
         "scan_interval_seconds": _SCHEDULER_INTERVAL_SECONDS,
+        "auto_diagnose_enabled": settings.runtime_auto_diagnose,
+        "auto_diagnose_min_confidence": settings.runtime_auto_diagnose_min_confidence,
         "scan_count": _SCAN_COUNT,
         "new_count": sum(1 for item in active_events if item.get("status") == "new"),
         "medium_or_high_count": sum(1 for item in pending_events if item.get("risk_level") in {"medium", "high"}),
@@ -100,6 +106,37 @@ def update_alert_status(event_id: str, status: str, linked_audit_id: str | None 
     }
 
 
+def diagnose_runtime_alert(event_id: str) -> dict:
+    event = _find_runtime_event(event_id)
+    if event is None:
+        if _LAST_SCAN_AT is None:
+            run_runtime_scan(trigger="diagnose_lazy_bootstrap")
+            event = _find_runtime_event(event_id)
+        if event is None:
+            return {
+                "ok": False,
+                "event_id": event_id,
+                "error": "runtime_alert_not_found",
+                "message": "Runtime alert was not found in the current alert cache.",
+                "runtime": runtime_status(list(_EVENT_CACHE)),
+            }
+
+    update_alert_status(event_id, "diagnosing")
+    query = _diagnosis_query_from_alert(event)
+    result = diagnose_system_issue(query, source_from_alert(event))
+    audit_id = result.get("audit_id")
+    if audit_id:
+        update_alert_status(event_id, "diagnosed", audit_id)
+    return {
+        "ok": True,
+        "event_id": event_id,
+        "query": query,
+        "diagnosis": result,
+        "event": _find_runtime_event(event_id),
+        "runtime": runtime_status(list(_EVENT_CACHE)),
+    }
+
+
 def source_from_alert(event: dict) -> dict:
     return {
         "kind": "runtime_alert",
@@ -115,6 +152,56 @@ def source_from_alert(event: dict) -> dict:
         "alert_source": event.get("source"),
         "detected_at": event.get("detected_at"),
     }
+
+
+def _diagnosis_query_from_alert(event: dict) -> str:
+    title = event.get("title") or "运行时告警"
+    summary = event.get("summary") or "自动巡检发现异常"
+    service = event.get("service") or "nginx"
+    port = event.get("port") or 80
+    return f"{title}：{summary}；请诊断 {service} 为什么无法绑定 {port} 端口"
+
+
+def _find_runtime_event(event_id: str) -> dict | None:
+    for event in _EVENT_CACHE:
+        if event.get("event_id") == event_id:
+            return event
+    return None
+
+
+def _maybe_auto_diagnose_runtime_alerts(trigger: str) -> None:
+    settings = get_settings()
+    if not settings.runtime_auto_diagnose:
+        return
+    if trigger.startswith("diagnose_"):
+        return
+
+    for event in list(_EVENT_CACHE):
+        event_id = event.get("event_id")
+        if not event_id:
+            continue
+        status = event.get("status")
+        if status not in {"new", "diagnosing"}:
+            continue
+        if event.get("linked_audit_id"):
+            continue
+        if not _is_high_confidence_alert(event, settings.runtime_auto_diagnose_min_confidence):
+            continue
+        try:
+            diagnose_runtime_alert(event_id)
+        except Exception as exc:  # pragma: no cover - defensive background guard
+            state = _EVENT_STATE.setdefault(event_id, {})
+            state["status"] = "diagnosis_failed"
+            state["handled_at"] = _now()
+            state["diagnosis_error"] = str(exc)
+
+
+def _is_high_confidence_alert(event: dict, min_confidence: float) -> bool:
+    if event.get("risk_level") == "high":
+        return True
+    evidence = event.get("evidence") or []
+    confidence = max((float(item.get("confidence") or 0) for item in evidence), default=0.0)
+    return confidence >= min_confidence
 
 
 def scheduler_is_running() -> bool:

@@ -138,6 +138,16 @@ export async function runRuntimeScan() {
   return response.json();
 }
 
+export async function diagnoseRuntimeAlert(eventId: string) {
+  const response = await fetch(`${API_BASE}/api/runtime/alerts/${eventId}/diagnose`, {method: "POST"});
+
+  if (!response.ok) {
+    throw new Error("runtime alert diagnose request failed");
+  }
+
+  return response.json();
+}
+
 export async function updateRuntimeAlertStatus(eventId: string, status: string, linkedAuditId?: string) {
   const response = await fetch(`${API_BASE}/api/runtime/alerts/${eventId}/status`, {
     method: "POST",

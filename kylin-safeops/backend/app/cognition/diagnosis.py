@@ -85,6 +85,8 @@ def diagnose_system_issue(query: str, source: dict | None = None) -> dict:
         "ai_enhancement": _ai_enhancement_status(critic),
         "safety_boundary": _safety_boundary(),
         "evidence_summary": _evidence_summary(knowledge, traces),
+        "counterfactual_verification_plan": _counterfactual_verification_plan(root_cause, facts, source_meta),
+        "remediation_plan": _remediation_plan(root_cause, facts, source_meta),
     }
     if source_meta:
         response["diagnosis_source"] = source_meta
@@ -456,6 +458,51 @@ def _evidence_promotion(knowledge_state: dict, traces: list[dict], facts: dict, 
     }
 
 
+def _counterfactual_verification_plan(root_cause: dict, facts: dict, source_meta: dict | None) -> dict:
+    port = facts.get("port") or (source_meta or {}).get("port") or 80
+    service = facts.get("service") or (source_meta or {}).get("service") or "nginx"
+    listener_verified = _has_verified_port_listener(facts)
+    return {
+        "execution_mode": "shadow_only",
+        "verified_observation": (
+            f"已通过 ss/netstat 验证 {port}/TCP 处于 LISTEN 冲突状态。"
+            if listener_verified else
+            f"尚未通过工具完整验证 {port}/TCP LISTEN 冲突，需继续补充取证。"
+        ),
+        "counterfactual_hypothesis": (
+            f"如果释放 {port} 端口，或将 {service} 的监听端口调整到未占用端口，"
+            "则 bind 失败条件应消失。"
+        ),
+        "verification_command": f"ss -lntp | grep ':{port}'",
+        "expected_result_after_fix": f"{port}/TCP 不再被非目标进程占用，{service}.service 可重新完成绑定检查。",
+        "safety_note": "该计划仅用于反事实验证说明；当前不会 kill 进程、不会修改 nginx 配置、不会重启服务。",
+        "root_cause": root_cause.get("name"),
+    }
+
+
+def _remediation_plan(root_cause: dict, facts: dict, source_meta: dict | None) -> dict:
+    port = facts.get("port") or (source_meta or {}).get("port") or 80
+    service = facts.get("service") or (source_meta or {}).get("service") or "nginx"
+    return {
+        "action": (
+            f"先确认 {port}/TCP 的占用者是否为预期进程；如非预期，释放该端口，"
+            f"或将 {service} 监听端口迁移到未占用端口。"
+        ),
+        "risk": "medium",
+        "requires_confirm": True,
+        "execution_mode": "shadow_only",
+        "shadow_preview_id": f"shadow_preview_{service}_{port}_restart_service",
+        "verification_command": f"ss -lntp | grep ':{port}'",
+        "rollback_plan": [
+            f"若变更监听端口失败，恢复 {service} 原监听端口配置。",
+            f"若服务恢复失败，检查 journalctl -u {service}.service --no-pager。",
+            "演示模式不执行真实修复；生产执行器默认关闭，必须通过人工确认和受控执行器后才能启用。",
+        ],
+        "safety_boundary": "dry-run / shadow-commit only; no restart_service execution in demo mode.",
+        "root_cause": root_cause.get("name"),
+    }
+
+
 def _ai_enhancement_status(critic: dict) -> dict:
     provider = critic.get("provider", "rule-fallback")
     enabled = bool(critic.get("enabled"))
@@ -471,7 +518,9 @@ def _ai_enhancement_status(critic: dict) -> dict:
 def _safety_boundary() -> dict:
     return {
         "real_remediation": "disabled_by_default",
-        "restart_policy": "restart_service 必须先经过 Shadow Execution 和人工确认；当前演示默认阻断真实重启。",
+        "confirmation_mode": "dry_run_shadow_commit",
+        "restart_policy": "restart_service 必须先经过 Shadow Execution 和人工确认；演示模式确认后只记录 dry-run / shadow-commit，不真实重启服务。",
+        "production_executor": "disabled_by_default",
         "config_mutation": "未授权情况下不修改 nginx、systemd 或关键配置文件。",
         "tool_outputs": "日志、命令输出和 MCP Resources 均作为 untrusted observation data。",
     }

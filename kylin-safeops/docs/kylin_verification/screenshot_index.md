@@ -30,6 +30,19 @@ docs/kylin_verification/screenshots/06_final_p0/
 - 仅显示中间变量赋值、没有输出证据的截图。
 - 右下角大面积红色“维护模式”标注遮挡核心内容的截图。
 
+## P0 补强截图
+
+以下截图用于证明“反事实验证、结构化修复建议、人工确认边界、审计报告”已补强：
+
+| 文件名 | 截图内容 | 证明点 |
+| --- | --- | --- |
+| `06_final_p0/01_audit_export_counterfactual_plan.png` | Audit Export 上半部分 | openKylin real mode、根因结论、Counterfactual Verification Plan |
+| `06_final_p0/02_audit_export_remediation_and_safety.png` | Audit Export 中段 | Remediation Plan、Evidence Promotion、Safety Boundary |
+| `06_final_p0/03_audit_export_audit_chain_deepseek_boundary.png` | Audit Export 下半部分 | Audit Chain、DeepSeek 可插拔边界、规则兜底 |
+| `06_final_p0/04_agent_diagnose_p0_structured_fields.png` | `/api/agent/diagnose` 精简输出 | `counterfactual_verification_plan`、`remediation_plan`、`safety_boundary` |
+| `06_final_p0/05_shadow_preview_dry_run_confirm.png` | `/api/shadow/preview` 上半部分 | `requires_confirm=true`、`dry_run_shadow_commit`、`real_execution=false` |
+| `06_final_p0/06_shadow_preview_tool_trace_real_adapter.png` | `/api/shadow/preview` 下半部分 | `kylin-real-adapter`、`ss_listen` 工具轨迹、8000 LISTEN 证据 |
+
 ## PPT 使用建议
 
 - 一页放系统环境：openKylin 版本、依赖、Real Mode。

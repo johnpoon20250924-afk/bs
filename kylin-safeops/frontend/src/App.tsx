@@ -4,6 +4,7 @@ import { Float, Line, Sparkles } from "@react-three/drei";
 import * as THREE from "three";
 import {
   diagnose,
+  diagnoseRuntimeAlert,
   exportAuditMarkdown,
   getAttackSurface,
   getAudit,
@@ -469,15 +470,54 @@ export function App() {
     setActiveView("dashboard");
     setSelectedAlertId(alert.event_id);
     setQuery(linkedQuery);
+    setDiagnosisSource(sourceMeta);
+    setLoading(true);
+    setReplay(null);
+    setAudit(null);
     setNotice(`主动告警已进入受控诊断：${alert.title}，正在生成 PlanSpec`);
-    await updateRuntimeAlertStatus(alert.event_id, "diagnosing").catch(() => undefined);
-    const completed = await runDiagnose(linkedQuery, "自动巡检诊断", sourceMeta);
-    if (completed?.audit_id) {
-      await updateRuntimeAlertStatus(alert.event_id, "diagnosed", completed.audit_id).catch(() => undefined);
+    try {
+      const payload = await diagnoseRuntimeAlert(alert.event_id);
+      const data = payload?.diagnosis;
+      if (!data) throw new Error("runtime alert diagnose response missing diagnosis");
+      assertDiagnosisContract(data);
+      const completed = completeDashboardDiagnosis({
+        ...data,
+        diagnosis_source: data.diagnosis_source ?? sourceMeta,
+      });
+      setResult(completed);
+      if (data.environment) {
+        setSummary((current: any) => ({
+          ...(current ?? {}),
+          mode: data.environment.effective_mode,
+          environment: data.environment,
+        }));
+      }
+      const [replayResult, auditResult] = await Promise.allSettled([
+        data.replay_id ? getReplay(data.replay_id) : Promise.resolve(null),
+        data.audit_id ? getAudit(data.audit_id) : Promise.resolve(null),
+      ]);
+      if (replayResult.status === "fulfilled" && replayResult.value) {
+        setReplay(replayResult.value);
+      }
+      if (auditResult.status === "fulfilled" && auditResult.value) {
+        setAudit(auditResult.value);
+      }
+      setShadowDecision("等待人工确认");
       await refreshRuntimeAlerts(false).catch(() => undefined);
-      const completedAlert = { ...alert, status: "diagnosed", linked_audit_id: completed.audit_id };
+      const completedAlert = { ...alert, status: "diagnosed", linked_audit_id: data.audit_id };
       setAlertDetail(completedAlert);
-      setNotice(`主动告警闭环完成：PlanSpec → 工具轨迹 → 证据图谱 → 根因结论 → 审计会话 ${completed.audit_id}`);
+      setNotice(`主动告警闭环完成：PlanSpec → 工具轨迹 → 证据图谱 → 根因结论 → 审计会话 ${data.audit_id}`);
+    } catch {
+      const completed = await runDiagnose(linkedQuery, "自动巡检诊断", sourceMeta);
+      if (completed?.audit_id) {
+        await updateRuntimeAlertStatus(alert.event_id, "diagnosed", completed.audit_id).catch(() => undefined);
+        await refreshRuntimeAlerts(false).catch(() => undefined);
+        const completedAlert = { ...alert, status: "diagnosed", linked_audit_id: completed.audit_id };
+        setAlertDetail(completedAlert);
+        setNotice(`主动告警闭环完成：PlanSpec → 工具轨迹 → 证据图谱 → 根因结论 → 审计会话 ${completed.audit_id}`);
+      }
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -6119,7 +6159,7 @@ function ShadowExecutionPanel({
       </ul>
       <div className="shadow-actions">
         <button className="ghost-button" onClick={() => onDecision("已取消：不会执行任何系统命令")} type="button">取消</button>
-        <button className="confirm-button" onClick={() => onDecision("已确认：演示模式仅记录审计，不真实重启服务")} type="button">确认执行</button>
+        <button className="confirm-button" onClick={() => onDecision("已确认：进入 dry-run / shadow-commit，仅记录审计，不真实执行 restart_service；生产执行器默认关闭")} type="button">确认执行</button>
       </div>
     </Panel>
   );

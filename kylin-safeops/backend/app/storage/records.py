@@ -75,6 +75,8 @@ def export_audit_markdown(audit_id: str) -> str | None:
     evidence_promotion = audit.get("evidence_promotion") or {}
     ai_enhancement = audit.get("ai_enhancement") or {}
     safety_boundary = audit.get("safety_boundary") or {}
+    counterfactual_plan = audit.get("counterfactual_verification_plan") or {}
+    remediation_plan = audit.get("remediation_plan") or {}
     diagnosis_source = audit.get("diagnosis_source") or {}
     alert_event = audit.get("alert_event") or {}
     requirement_coverage = audit.get("requirement_coverage") or _requirement_coverage(audit)
@@ -126,6 +128,24 @@ def export_audit_markdown(audit_id: str) -> str | None:
         f"- 已验证证据数：{evidence_summary.get('verified_count', 0)}",
         f"- 工具调用数：{evidence_summary.get('tool_calls', 0)}",
         f"- 结论可追踪：{evidence_summary.get('all_conclusions_traceable', False)}",
+        "",
+        "## Counterfactual Verification Plan",
+        f"- Execution Mode：{counterfactual_plan.get('execution_mode', 'shadow_only')}",
+        f"- 已验证观察：{counterfactual_plan.get('verified_observation', '')}",
+        f"- 反事实假设：{counterfactual_plan.get('counterfactual_hypothesis', '')}",
+        f"- Verification Command：`{counterfactual_plan.get('verification_command', '')}`",
+        f"- 预期结果：{counterfactual_plan.get('expected_result_after_fix', '')}",
+        f"- 安全说明：{counterfactual_plan.get('safety_note', '')}",
+        "",
+        "## Remediation Plan",
+        f"- Action：{remediation_plan.get('action', '')}",
+        f"- Risk：{remediation_plan.get('risk', '')}",
+        f"- Requires Confirm：{remediation_plan.get('requires_confirm', True)}",
+        f"- Execution Mode：{remediation_plan.get('execution_mode', 'shadow_only')}",
+        f"- Shadow Preview ID：{remediation_plan.get('shadow_preview_id', '')}",
+        f"- Verification Command：`{remediation_plan.get('verification_command', '')}`",
+        "- Rollback Plan：",
+        *[f"  - {item}" for item in remediation_plan.get("rollback_plan", [])],
         "",
         "## PlanSpec",
     ])
@@ -213,6 +233,8 @@ def _build_audit(audit_id: str, replay_id: str, record: dict) -> dict:
         "critic": record.get("critic", {}),
         "ai_enhancement": record.get("ai_enhancement", {}),
         "safety_boundary": record.get("safety_boundary", {}),
+        "counterfactual_verification_plan": record.get("counterfactual_verification_plan", {}),
+        "remediation_plan": record.get("remediation_plan", {}),
         "evidence_promotion": record.get("evidence_promotion", {}),
         "evidence_summary": record.get("evidence_summary", {}),
         "audit_chain": record.get("audit_chain") or _audit_chain(record),
