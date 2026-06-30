@@ -102,6 +102,7 @@ type DiagnosisSource = {
 
 type RuntimeAlertEvent = {
   event_id: string;
+  alert_id?: string;
   source: string;
   title: string;
   category?: string;
@@ -135,6 +136,27 @@ type TwinNode = {
   screen: [number, number];
   pulse?: boolean;
 };
+
+function normalizeRuntimeAlertsPayload(data: any): RuntimeAlertEvent[] {
+  const rows = Array.isArray(data?.items)
+    ? data.items
+    : Array.isArray(data?.alerts)
+      ? data.alerts
+      : Array.isArray(data?.signals)
+        ? data.signals
+        : [];
+  return rows
+    .map((item: any) => {
+      const eventId = item?.event_id ?? item?.alert_id;
+      if (!eventId) return null;
+      return {
+        ...item,
+        event_id: String(eventId),
+        alert_id: item?.alert_id ?? String(eventId),
+      } as RuntimeAlertEvent;
+    })
+    .filter(Boolean) as RuntimeAlertEvent[];
+}
 
 function alertToDiagnosisSource(alert: RuntimeAlertEvent): DiagnosisSource {
   return {
@@ -404,7 +426,7 @@ export function App() {
       try {
         const data = await getRuntimeAlerts();
         if (cancelled) return;
-        setRuntimeAlerts(data.items ?? []);
+        setRuntimeAlerts(normalizeRuntimeAlertsPayload(data));
         setRuntimeStatus(data.runtime ?? null);
       } catch {
         if (!cancelled) setNotice("自动巡检暂未连接后端，继续使用演示链路");
@@ -427,15 +449,17 @@ export function App() {
 
   async function refreshRuntimeAlerts(showNotice = false) {
     const data = await getRuntimeAlerts();
-    setRuntimeAlerts(data.items ?? []);
+    const alerts = normalizeRuntimeAlertsPayload(data);
+    setRuntimeAlerts(alerts);
     setRuntimeStatus(data.runtime ?? null);
-    if (showNotice) setNotice(`自动巡检已刷新：${data.items?.length ?? 0} 个运行时事件`);
+    if (showNotice) setNotice(`自动巡检已刷新：${alerts.length} 个运行时事件`);
   }
 
   async function handleRunRuntimeScan() {
     const data = await runRuntimeScan();
     await refreshRuntimeAlerts(false);
-    setNotice(`自动巡检已执行：${data.total ?? data.items?.length ?? 0} 个事件已刷新`);
+    const alerts = normalizeRuntimeAlertsPayload(data);
+    setNotice(`自动巡检已执行：${data.total ?? alerts.length} 个事件已刷新`);
   }
 
   function handleOpenAlertDetail(alert: RuntimeAlertEvent) {

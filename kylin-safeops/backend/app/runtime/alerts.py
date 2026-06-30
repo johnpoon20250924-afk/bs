@@ -27,11 +27,7 @@ def list_runtime_alerts() -> dict:
     if _LAST_SCAN_AT is None:
         run_runtime_scan(trigger="lazy_bootstrap")
     events = list(_EVENT_CACHE)
-    return {
-        "runtime": runtime_status(events),
-        "items": events,
-        "total": len(events),
-    }
+    return runtime_alert_response(events)
 
 
 def run_runtime_scan(trigger: str = "manual") -> list[dict]:
@@ -79,6 +75,24 @@ def runtime_status(events: list[dict] | None = None) -> dict:
         "new_count": sum(1 for item in active_events if item.get("status") == "new"),
         "medium_or_high_count": sum(1 for item in pending_events if item.get("risk_level") in {"medium", "high"}),
         "message": "后台自动巡检已启用：读取类检测自动执行，高影响处置需人工确认。",
+    }
+
+
+def runtime_alert_response(events: list[dict]) -> dict:
+    public_events = [_public_alert(item) for item in events]
+    return {
+        "runtime": runtime_status(public_events),
+        "items": public_events,
+        "alerts": public_events,
+        "signals": public_events,
+        "total": len(public_events),
+        "contract": {
+            "id_field": "event_id",
+            "compat_id_field": "alert_id",
+            "diagnose": "POST /api/runtime/alerts/{event_id}/diagnose",
+            "diagnose_signal_alias": "POST /api/runtime/signals/{event_id}/diagnose",
+            "status": "POST /api/runtime/alerts/{event_id}/status",
+        },
     }
 
 
@@ -164,9 +178,25 @@ def _diagnosis_query_from_alert(event: dict) -> str:
 
 def _find_runtime_event(event_id: str) -> dict | None:
     for event in _EVENT_CACHE:
-        if event.get("event_id") == event_id:
+        if event.get("event_id") == event_id or event.get("alert_id") == event_id:
             return event
     return None
+
+
+def _public_alert(event: dict) -> dict:
+    data = dict(event)
+    event_id = data.get("event_id") or data.get("alert_id")
+    if event_id is None:
+        event_id = f"evt_{data.get('source', 'runtime')}_{data.get('category', 'alert')}"
+    data["event_id"] = str(event_id)
+    data["alert_id"] = data.get("alert_id") or data["event_id"]
+    data["diagnose_url"] = f"/api/runtime/alerts/{data['event_id']}/diagnose"
+    data["status_url"] = f"/api/runtime/alerts/{data['event_id']}/status"
+    data["actions"] = {
+        "diagnose": data["diagnose_url"],
+        "update_status": data["status_url"],
+    }
+    return data
 
 
 def _maybe_auto_diagnose_runtime_alerts(trigger: str) -> None:

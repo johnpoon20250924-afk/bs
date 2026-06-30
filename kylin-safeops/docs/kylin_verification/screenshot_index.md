@@ -42,6 +42,10 @@ docs/kylin_verification/screenshots/06_final_p0/
 | `06_final_p0/04_agent_diagnose_p0_structured_fields.png` | `/api/agent/diagnose` 精简输出 | `counterfactual_verification_plan`、`remediation_plan`、`safety_boundary` |
 | `06_final_p0/05_shadow_preview_dry_run_confirm.png` | `/api/shadow/preview` 上半部分 | `requires_confirm=true`、`dry_run_shadow_commit`、`real_execution=false` |
 | `06_final_p0/06_shadow_preview_tool_trace_real_adapter.png` | `/api/shadow/preview` 下半部分 | `kylin-real-adapter`、`ss_listen` 工具轨迹、8000 LISTEN 证据 |
+| `06_final_p0/07_runtime_alert_diagnose_closed_loop.png` | Runtime Alert 触发 Diagnose 精简输出 | `event_id` 直连诊断、`audit_id/replay_id` 生成、告警状态回写为 `diagnosed`、Real Mode 与 `kylin-real-adapter` |
+| `06_final_p0/08_frontend_runtime_alert_detail_diagnosed.png` | 前端 Runtime Alert 详情弹窗 | 告警状态 `已诊断`、`已关联审计`、事件字段、证据与建议动作 |
+| `06_final_p0/09_frontend_runtime_alert_audit_center_closed_loop.png` | 前端打开关联审计后的审计中心 | B/S 页面完成 Runtime Alert -> Diagnose -> Audit Center 闭环 |
+| `06_final_p0/10_runtime_auto_diagnose_enabled.png` | 自动诊断开关精简输出 | `auto_diagnose_enabled=true`、高置信告警自动进入 `diagnosed` 并生成 `linked_audit_id` |
 
 ## PPT 使用建议
 
